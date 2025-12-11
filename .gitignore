@@ -30,9 +30,6 @@ jenkins_home/
 # Docker
 .dockerignore
 
-# Reports
-/reports
-
 
 # Logs
 *.log
