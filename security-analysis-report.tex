@@ -84,15 +84,15 @@ Ce rapport présente une analyse complète de sécurité du projet Vulpy, une ap
 
 \subsection*{Informations du Projet}
 \begin{itemize}[leftmargin=*]
-    \item \textbf{Lien du projet :} \url{https://github.com/xmawe/vulpy-sast-sca-analysis}
+    \item \textbf{Lien du projet :} \url{https://github.com/xmawe/vulpy-sast-dast-analysis}
     
-    \item \textbf{Rapports SAST avant corrections :} \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/sast/before-vul-correction}
+    \item \textbf{Rapports SAST avant corrections :} \url{https://github.com/xmawe/vulpy-sast-dast-analysis/tree/main/reports/sast/before-vul-correction}
     
-    \item \textbf{Rapports SAST après corrections :} \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/sast/after-vul-correction}
+    \item \textbf{Rapports SAST après corrections :} \url{https://github.com/xmawe/vulpy-sast-dast-analysis/tree/main/reports/sast/after-vul-correction}
     
-    \item \textbf{Rapports DAST avant corrections :} \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/dast/before-val-correction}
+    \item \textbf{Rapports DAST avant corrections :} \url{https://github.com/xmawe/vulpy-sast-dast-analysis/tree/main/reports/dast/before-val-correction}
     
-    \item \textbf{Rapports DAST après corrections :} \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/dast/after-val-correction}
+    \item \textbf{Rapports DAST après corrections :} \url{https://github.com/xmawe/vulpy-sast-dast-analysis/tree/main/reports/dast/after-val-correction}
 \end{itemize}
 
 \subsection*{Résultats Clés}
@@ -1072,7 +1072,7 @@ Les résultats montrent l'importance d'une approche multi-couches de la sécurit
 
 \section{Jenkinsfile}
 
-\textbf{Note :} Le Jenkinsfile complet g\`ere 14 stages avec des rapports s\'epar\'es pour bad/ et good/. Voir le fichier complet sur GitHub : \url{https://github.com/xmawe/vulpy-sast-sca-analysis/blob/main/Jenkinsfile}
+\textbf{Note :} Le Jenkinsfile complet g\`ere 14 stages avec des rapports s\'epar\'es pour bad/ et good/. Voir le fichier complet sur GitHub : \url{https://github.com/xmawe/vulpy-sast-dast-analysis/blob/main/Jenkinsfile}
 
 \begin{lstlisting}[language=Groovy, caption=Pipeline Jenkins (extrait principal)]
 pipeline {
@@ -1251,31 +1251,31 @@ Le pipeline génère deux ensembles complets de rapports :
 \begin{itemize}[leftmargin=*]
     \item \textbf{Rapports SAST avant corrections :}
     
-    \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/sast/before-vul-correction}
+    \url{https://github.com/xmawe/vulpy-sast-dast-analysis/tree/main/reports/sast/before-vul-correction}
     
     Ces rapports montrent l'état initial avec 11 vulnérabilités dans good/
     
     \item \textbf{Rapports SAST après corrections :}
     
-    \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/sast/after-vul-correction}
+    \url{https://github.com/xmawe/vulpy-sast-dast-analysis/tree/main/reports/sast/after-vul-correction}
     
     Ces rapports confirment l'élimination complète des vulnérabilités SAST (0 détecté)
     
     \item \textbf{Rapports DAST avant corrections :}
     
-    \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/dast/before-val-correction}
+    \url{https://github.com/xmawe/vulpy-sast-dast-analysis/tree/main/reports/dast/before-val-correction}
     
     Ces rapports montrent 13 avertissements DAST dans la version good/
     
     \item \textbf{Rapports DAST après corrections :}
     
-    \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/dast/after-val-correction}
+    \url{https://github.com/xmawe/vulpy-sast-dast-analysis/tree/main/reports/dast/after-val-correction}
     
     Ces rapports confirment la correction de 3 vulnérabilités (~10 avertissements restants)
     
     \item \textbf{Code source et Jenkinsfile :}
     
-    \url{https://github.com/xmawe/vulpy-sast-sca-analysis}
+    \url{https://github.com/xmawe/vulpy-sast-dast-analysis}
 \end{itemize}
 
 \subsection{Comparaison Avant/Après}

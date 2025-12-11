@@ -1,8 +1,8 @@
-# TP - Analyse de Sécurité SAST et SCA avec Vulpy
+# TP - Analyse de Sécurité SAST, SCA et DAST avec Vulpy
 
 ## 📋 Description
 
-Ce travail pratique consiste à effectuer une analyse de sécurité complète d'une application Python vulnérable (Vulpy) en utilisant des outils d'analyse statique (SAST) et d'analyse de composition logicielle (SCA).
+Ce travail pratique consiste à effectuer une analyse de sécurité complète d'une application Python vulnérable (Vulpy) en utilisant des outils d'analyse statique (SAST), d'analyse de composition logicielle (SCA), et d'analyse dynamique (DAST).
 
 L'application Vulpy existe en deux versions :
 - **Bad** (vulnérable) : contient intentionnellement des vulnérabilités de sécurité
