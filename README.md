@@ -122,6 +122,14 @@ Le pipeline exécute les étapes suivantes :
    - Construction de l'image Docker de la version **good**
    - Scan de vulnérabilités de l'image **good**
 
+#### 6. **Tests Dynamiques (DAST)**
+   - Préparation de l'environnement OWASP ZAP
+   - Démarrage de l'application **bad** et scan DAST
+   - Génération du rapport ZAP pour la version **bad**
+   - Démarrage de l'application **good** et scan DAST
+   - Génération du rapport ZAP pour la version **good**
+   - Comparaison des résultats DAST entre les deux versions
+
 ## 📊 Rapports Générés
 
 Tous les rapports sont archivés dans le répertoire `reports/` et accessibles via Jenkins.
@@ -139,6 +147,18 @@ Tous les rapports sont archivés dans le répertoire `reports/` et accessibles v
 ### Rapports Bandit (HTML)
 - **bandit-bad.html** : Analyse de sécurité du code vulnérable
 - **bandit-good.html** : Analyse de sécurité du code sécurisé
+
+### Rapports DAST OWASP ZAP (HTML/XML/JSON)
+
+#### Version Bad (Vulnérable)
+- **zap-baseline-report-bad.html** : Rapport HTML du scan dynamique
+- **zap-baseline-report-bad.xml** : Rapport XML du scan dynamique
+- **zap-baseline-report-bad.json** : Rapport JSON du scan dynamique
+
+#### Version Good (Sécurisée)
+- **zap-baseline-report-good.html** : Rapport HTML du scan dynamique
+- **zap-baseline-report-good.xml** : Rapport XML du scan dynamique
+- **zap-baseline-report-good.json** : Rapport JSON du scan dynamique
 
 ### Rapports Trivy (JSON)
 
@@ -248,6 +268,7 @@ docker exec jenkins trivy fs /vulpy/vulpy/bad
 
 - [Documentation Bandit](https://bandit.readthedocs.io/)
 - [Documentation Trivy](https://aquasecurity.github.io/trivy/)
+- [Documentation OWASP ZAP](https://www.zaproxy.org/docs/)
 - [OWASP Top 10](https://owasp.org/www-project-top-ten/)
 - [CWE - Common Weakness Enumeration](https://cwe.mitre.org/)
 - [CVE - Common Vulnerabilities and Exposures](https://cve.mitre.org/)

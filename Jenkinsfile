@@ -168,6 +168,135 @@ pipeline {
                 '''
             }
         }
+        
+        // ========== DAST Preparation ==========
+        stage('Prepare DAST Environment') {
+            steps {
+                sh '''
+                    # Créer le dossier pour les rapports DAST
+                    mkdir -p ${WORKSPACE}/reports_dast
+                    chmod 777 ${WORKSPACE}/reports_dast
+                    
+                    # Vérifier/Installer OWASP ZAP
+                    echo "=== Pulling OWASP ZAP Docker Image ==="
+                    docker pull zaproxy/zap-stable
+                    
+                    # Vérifier l'installation
+                    echo "=== Verifying OWASP ZAP Installation ==="
+                    docker run --rm zaproxy/zap-stable zap.sh -version
+                '''
+            }
+        }
+        
+        // ========== DAST - Bad Version ==========
+        stage('DAST Scan - Bad Version') {
+            steps {
+                sh '''
+                    # Nettoyer les conteneurs existants
+                    echo "=== Cleaning up existing containers ==="
+                    docker stop vulpy-bad-app 2>/dev/null || true
+                    docker rm vulpy-bad-app 2>/dev/null || true
+                    
+                    # Démarrer l'application vulnérable (Bad)
+                    echo "=== Starting Vulpy Bad Application ==="
+                    docker run -d --name vulpy-bad-app --network vulpy-sast-sca-analysis_default -p 5001:5000 vulpy-bad:local
+                    
+                    # Attendre que l'application démarre (plus longtemps)
+                    echo "=== Waiting for application to start ==="
+                    sleep 20
+                    
+                    # Vérifier que le conteneur est toujours en cours d'exécution
+                    docker ps | grep vulpy-bad-app
+                    
+                    # Préparer le répertoire des rapports avec les bonnes permissions
+                    chmod 777 ${WORKSPACE}/reports
+                    
+                    # Lancer le scan OWASP ZAP
+                    echo "=== Running OWASP ZAP Baseline Scan on Bad Version ==="
+                    docker run --rm -u root --network vulpy-sast-sca-analysis_default \
+                        -v ${WORKSPACE}/reports:/zap/wrk:rw \
+                        zaproxy/zap-stable \
+                        zap-baseline.py \
+                            -t http://vulpy-bad-app:5000/ \
+                            -r zap-baseline-report-bad.html \
+                            -x zap-baseline-report-bad.xml \
+                            -J zap-baseline-report-bad.json \
+                            -I || echo "ZAP scan completed with warnings (expected for vulnerable app)"
+                    
+                    # Vérifier si les rapports ont été générés
+                    echo "=== Checking generated reports ==="
+                    ls -la ${WORKSPACE}/reports/ | grep zap-baseline-report-bad || echo "Reports not found yet"
+                    
+                    # Fix permissions on generated reports
+                    chmod -R 755 ${WORKSPACE}/reports_dast/ || true
+                    
+                    # Arrêter et supprimer le conteneur
+                    echo "=== Stopping Bad Application ==="
+                    docker stop vulpy-bad-app || true
+                    docker rm vulpy-bad-app || true
+                '''
+            }
+        }
+        
+        // ========== DAST - Good Version ==========
+        stage('DAST Scan - Good Version') {
+            steps {
+                sh '''
+                    # Nettoyer les conteneurs existants
+                    echo "=== Cleaning up existing containers ==="
+                    docker stop vulpy-good-app 2>/dev/null || true
+                    docker rm vulpy-good-app 2>/dev/null || true
+                    
+                    # Démarrer l'application sécurisée (Good)
+                    echo "=== Starting Vulpy Good Application ==="
+                    docker run -d --name vulpy-good-app --network vulpy-sast-sca-analysis_default -p 5002:5000 vulpy-good:local
+                    
+                    # Attendre que l'application démarre (plus longtemps)
+                    echo "=== Waiting for application to start ==="
+                    sleep 20
+                    
+                    # Vérifier que le conteneur est toujours en cours d'exécution
+                    docker ps | grep vulpy-good-app
+                    
+                    # Préparer le répertoire des rapports avec les bonnes permissions
+                    chmod 777 ${WORKSPACE}/reports
+                    
+                    # Lancer le scan OWASP ZAP
+                    echo "=== Running OWASP ZAP Baseline Scan on Good Version ==="
+                    docker run --rm -u root --network vulpy-sast-sca-analysis_default \
+                        -v ${WORKSPACE}/reports:/zap/wrk:rw \
+                        zaproxy/zap-stable \
+                        zap-baseline.py \
+                            -t http://vulpy-good-app:5000/ \
+                            -r zap-baseline-report-good.html \
+                            -x zap-baseline-report-good.xml \
+                            -J zap-baseline-report-good.json \
+                            -I || echo "ZAP scan completed with warnings"
+                    
+                    # Vérifier si les rapports ont été générés
+                    echo "=== Checking generated reports ==="
+                    ls -la ${WORKSPACE}/reports/ | grep zap-baseline-report-good || echo "Reports not found yet"
+                    
+                    # Fix permissions on generated reports
+                    chmod -R 755 ${WORKSPACE}/reports_dast/ || true
+                    
+                    # Arrêter et supprimer le conteneur
+                    echo "=== Stopping Good Application ==="
+                    docker stop vulpy-good-app || true
+                    docker rm vulpy-good-app || true
+                '''
+            }
+        }
+        
+        // ========== DAST Reports Summary ==========
+        stage('DAST Reports Summary') {
+            steps {
+                sh '''
+                    echo "=== All Security Reports (SAST + DAST) ==="
+                    ls -lh ${WORKSPACE}/reports/ | grep -E '(bandit|trivy|zap)'
+                '''
+            }
+        }
     }
     
     post {
@@ -176,12 +305,20 @@ pipeline {
             
             publishHTML([
                 reportDir: 'reports',
-                reportFiles: 'bandit-bad.html, bandit-good.html',
+                reportFiles: 'bandit-bad.html, bandit-good.html, zap-baseline-report-bad.html, zap-baseline-report-good.html',
                 reportName: 'Security Reports',
                 allowMissing: true,
                 alwaysLinkToLastBuild: true,
                 keepAll: true
             ])
+        }
+        
+        cleanup {
+            // Nettoyage des conteneurs et images si nécessaire
+            sh '''
+                docker stop vulpy-bad-app vulpy-good-app 2>/dev/null || true
+                docker rm vulpy-bad-app vulpy-good-app 2>/dev/null || true
+            '''
         }
     }
 }

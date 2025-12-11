@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from flask import Flask, g, redirect, request
+from flask_wtf.csrf import CSRFProtect
 
 from mod_hello import mod_hello
 from mod_user import mod_user
@@ -17,6 +18,10 @@ import libsession
 app = Flask('vulpy')
 # Use environment variable for SECRET_KEY
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', os.urandom(32).hex())
+app.config['WTF_CSRF_TIME_LIMIT'] = None  # CSRF token doesn't expire
+
+# Enable CSRF protection for all forms
+csrf = CSRFProtect(app)
 
 app.register_blueprint(mod_hello, url_prefix='/hello')
 app.register_blueprint(mod_user, url_prefix='/user')
@@ -47,9 +52,17 @@ def before_request():
     g.session = libsession.load(request)
 
 @app.after_request
-def add_csp_headers(response):
+def add_security_headers(response):
+    # CSP header
     if csp:
         response.headers['Content-Security-Policy'] = csp
+    
+    # Anti-clickjacking protection
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    
+    # Prevent MIME type sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    
     return response
 
 # Disable debug mode in production

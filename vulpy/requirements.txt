@@ -1,6 +1,7 @@
 click
 cryptography
 Flask
+Flask-WTF
 geoip2
 jsonschema
 PyJWT
