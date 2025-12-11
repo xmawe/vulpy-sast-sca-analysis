@@ -1,6 +1,12 @@
 import re
+import tempfile
+import os
 
-with open('/tmp/darkweb2017-top10000.txt') as f:
+# Use proper temp directory instead of hardcoded /tmp
+temp_dir = tempfile.gettempdir()
+password_file = os.path.join(temp_dir, 'darkweb2017-top10000.txt')
+
+with open(password_file) as f:
     for password in f.readlines():
 
         password = password.strip()

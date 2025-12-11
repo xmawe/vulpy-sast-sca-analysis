@@ -3,11 +3,13 @@ import random
 import hashlib
 import re
 import jwt
+import os
 from time import time
 
 from pathlib import Path
 
-secret = 'MYSUPERSECRETKEY'
+# Use environment variable for secret key
+secret = os.environ.get('API_SECRET_KEY', 'MYSUPERSECRETKEY')
 not_after = 60 # 1 minute
 
 def keygen(username, password=None, login=True):

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 from flask import Flask, g, redirect, request
 
 from mod_hello import mod_hello
@@ -10,7 +11,8 @@ from mod_mfa import mod_mfa
 import libsession
 
 app = Flask('vulpy')
-app.config['SECRET_KEY'] = 'aaaaaaa'
+# Use environment variable for SECRET_KEY
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', os.urandom(32).hex())
 
 app.register_blueprint(mod_hello, url_prefix='/hello')
 app.register_blueprint(mod_user, url_prefix='/user')
@@ -26,4 +28,10 @@ def do_home():
 def before_request():
     g.session = libsession.load(request)
 
-app.run(debug=True, host='127.0.1.1', ssl_context=('/tmp/acme.cert', '/tmp/acme.key'))
+# Disable debug mode in production and use proper cert paths
+import tempfile
+cert_dir = tempfile.gettempdir()
+cert_path = os.path.join(cert_dir, 'acme.cert')
+key_path = os.path.join(cert_dir, 'acme.key')
+
+app.run(debug=False, host='127.0.1.1', ssl_context=(cert_path, key_path))

