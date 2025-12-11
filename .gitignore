@@ -32,8 +32,7 @@ jenkins_home/
 
 # Reports
 /reports
-*.html
-*.json
+
 
 # Logs
 *.log
