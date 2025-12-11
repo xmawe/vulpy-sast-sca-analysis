@@ -1,0 +1,36 @@
+FROM jenkins/jenkins:lts
+
+USER root
+
+# Installation Docker CLI (latest version)
+RUN apt-get update && \
+    apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release && \
+    install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc && \
+    chmod a+r /etc/apt/keyrings/docker.asc && \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null && \
+    apt-get update && \
+    apt-get install -y docker-ce-cli && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Installation Python et Bandit
+RUN apt-get update && \
+    apt-get install -y python3 python3-pip python3-venv && \
+    pip3 install --break-system-packages bandit && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Installation Trivy
+RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.48.0
+
+# Verification des installations
+RUN docker --version && \
+    python3 --version && \
+    bandit --version && \
+    trivy --version
+
+USER jenkins
+
+# Pre-install Jenkins plugins (Pipeline and dependencies)
+RUN jenkins-plugin-cli --plugins workflow-aggregator:latest htmlpublisher:latest

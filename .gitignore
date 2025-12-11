@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Jenkins
+jenkins_home/
+
+# Docker
+.dockerignore
+
+# Reports
+/reports
+*.html
+*.json
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

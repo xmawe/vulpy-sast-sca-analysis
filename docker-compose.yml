@@ -1,0 +1,26 @@
+services:
+  jenkins:
+    build:
+      context: .
+      dockerfile: Dockerfile.jenkins
+    image: jenkins-complete:local
+    container_name: jenkins
+    user: root
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - .:/vulpy  # Code source
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker socket
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    networks:
+      - default
+
+volumes:
+  jenkins_home:
+
+networks:
+  default:
+    name: vulpy-sast-sca-analysis_default
