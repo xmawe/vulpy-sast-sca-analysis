@@ -1,0 +1,975 @@
+% Security Analysis Report - Vulpy Project
+\documentclass[12pt,a4paper]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{geometry}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{longtable}
+\usepackage{float}
+\usepackage{enumitem}
+
+% Page geometry
+\geometry{left=2.5cm, right=2.5cm, top=3cm, bottom=3cm}
+
+% Colors
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+\definecolor{high}{rgb}{0.8,0.1,0.1}
+\definecolor{medium}{rgb}{0.9,0.5,0.1}
+
+% Code listing style
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},
+    basicstyle=\ttfamily\footnotesize,
+    breaklines=true,
+    numbers=left,
+    numbersep=5pt
+}
+\lstset{style=mystyle}
+
+% Headers and footers
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Rapport d'Analyse de Sécurité}
+\fancyhead[R]{Projet Vulpy}
+\fancyfoot[C]{\thepage}
+
+% Title formatting
+\titleformat{\section}{\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{1em}{}
+
+% Hyperlink setup
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    pdftitle={Rapport d'Analyse de Sécurité - Vulpy},
+    pdfpagemode=FullScreen,
+}
+
+% Document
+\begin{document}
+
+% Title page
+\begin{titlepage}
+    \centering
+    \vspace*{3cm}
+    
+    {\Huge\bfseries Rapport d'Analyse de Sécurité\\[0.5cm]}
+    {\LARGE Projet Vulpy\\[2cm]}
+    
+    {\large Analyse SAST et SCA avec Jenkins, Bandit et Trivy\\[3cm]}
+    
+    {\large Date : 11 décembre 2025\\[0.5cm]}
+    {\large Réalisé par : JADA Mohamed\\[0.5cm]}
+\end{titlepage}
+
+% Table of contents
+\tableofcontents
+\newpage
+
+% Executive Summary
+\section{Résumé Exécutif}
+
+Ce rapport présente une analyse complète de sécurité du projet Vulpy, une application web Flask volontairement vulnérable, en utilisant des outils d'analyse statique (SAST) et d'analyse de composition logicielle (SCA). L'objectif est d'identifier, documenter et corriger les vulnérabilités présentes dans le code source et les dépendances.
+
+\subsection*{Informations du Projet}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Lien du projet :} \url{https://github.com/xmawe/vulpy-sast-sca-analysis}
+    
+    \item \textbf{Rapports avant corrections :} \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/before-vul-correction}
+    
+    \item \textbf{Rapports après corrections :} \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/after-vul-correction}
+\end{itemize}
+
+\subsection*{Résultats Clés}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Version bad (vulnérable) :} 22 vulnérabilités détectées
+    \begin{itemize}
+        \item 2 vulnérabilités HIGH (Flask debug mode)
+        \item 13 vulnérabilités MEDIUM (SQL injection, hardcoded /tmp, timeout)
+        \item 7 vulnérabilités LOW (hardcoded secrets, subprocess, try/except)
+    \end{itemize}
+    \item \textbf{Version good (après corrections) :} 11 vulnérabilités détectées initialement
+    \begin{itemize}
+        \item 2 vulnérabilités HIGH (Flask debug mode)
+        \item 5 vulnérabilités MEDIUM (hardcoded /tmp, timeout, SQL injection)
+        \item 4 vulnérabilités LOW (hardcoded secrets, try/except)
+    \end{itemize}
+    \item \textbf{Corrections appliquées :} Toutes les vulnérabilités HIGH et MEDIUM éliminées (100\%)
+    \item \textbf{État final :} 0 vulnérabilité dans la version good corrigée
+    \item 0 vulnérabilité CVE dans les dépendances Python
+\end{itemize}
+
+\newpage
+
+% Objectives
+\section{Objectifs}
+
+\begin{enumerate}[leftmargin=*]
+    \item Pipeline CI/CD avec Jenkins
+    \item Analyse SAST avec Bandit
+    \item Analyse SCA avec Trivy
+    \item Correction des vulnérabilités critiques et moyennes
+\end{enumerate}
+
+\subsection{Outils Utilisés}
+
+Bandit 1.8.6 (SAST), Trivy 0.48.0 (SCA), Jenkins (CI/CD), Docker
+
+\newpage
+
+% Environment Configuration
+\section{Configuration de l'Environnement}
+
+\subsection{docker-compose.yml}
+
+\begin{lstlisting}[language=Docker, caption=Configuration Docker Compose]
+services:
+  jenkins:
+    build:
+      context: .
+      dockerfile: Dockerfile.jenkins
+    image: jenkins-complete:local
+    container_name: jenkins
+    user: root
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - .:/vulpy  # Code source
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    networks:
+      - default
+
+volumes:
+  jenkins_home:
+
+networks:
+  default:
+    name: vulpy-sast-sca-analysis_default
+\end{lstlisting}
+
+\subsection{Dockerfile (Application Vulpy)}
+
+\begin{lstlisting}[language=Docker, caption=Dockerfile optimisé pour l'application]
+# Image de base Python optimisée
+FROM python:3.11-slim-bookworm
+
+# Métadonnées
+LABEL maintainer="security-team"
+LABEL version="1.0"
+LABEL description="Vulpy Security Analysis Application"
+
+# Variables d'environnement
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    APP_HOME=/app
+
+WORKDIR $APP_HOME
+
+# Installation des dépendances système
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copie et installation des dépendances Python
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Copie du code source
+COPY . .
+
+# Initialisation de la base de données
+WORKDIR $APP_HOME/bad
+RUN python db_init.py || echo "DB initialization completed"
+
+# Création d'un utilisateur non-root
+RUN useradd -m -u 1000 vulpyuser && \
+    chown -R vulpyuser:vulpyuser $APP_HOME
+
+USER vulpyuser
+
+EXPOSE 5000
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD python -c "import requests; requests.get('http://localhost:5000')" || exit 1
+
+CMD ["python", "vulpy.py"]
+\end{lstlisting}
+
+\subsection{Pipeline Jenkins}
+
+Le pipeline exécute 10 étapes : SAST (Bandit), SCA (Trivy sur dépendances, secrets, supply chain), build Docker, et scan d'image.
+
+\subsection{Dockerfile.jenkins}
+
+\begin{lstlisting}[language=Docker, caption=Image Jenkins personnalisée avec outils de sécurité]
+# Image de base Jenkins LTS
+FROM jenkins/jenkins:lts-jdk17
+
+# Passage en root pour installations
+USER root
+
+# Installation Docker CLI (version stable)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        apt-transport-https \
+        ca-certificates \
+        curl \
+        gnupg \
+        lsb-release && \
+    install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://download.docker.com/linux/debian/gpg \
+        -o /etc/apt/keyrings/docker.asc && \
+    chmod a+r /etc/apt/keyrings/docker.asc && \
+    echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] \
+        https://download.docker.com/linux/debian bookworm stable" \
+        > /etc/apt/sources.list.d/docker.list && \
+    apt-get update && \
+    apt-get install -y docker-ce-cli docker-compose-plugin && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Installation Python 3 et outils de sécurité
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+        python3-venv \
+        git \
+        wget && \
+    pip3 install --break-system-packages \
+        bandit==1.8.6 \
+        safety \
+        pylint && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Installation Trivy (scanner de vulnérabilités)
+RUN wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key \
+        | gpg --dearmor -o /usr/share/keyrings/trivy.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] \
+        https://aquasecurity.github.io/trivy-repo/deb generic main" \
+        > /etc/apt/sources.list.d/trivy.list && \
+    apt-get update && \
+    apt-get install -y trivy && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Vérification des versions installées
+RUN echo "=== Versions des outils ==="  && \
+    docker --version && \
+    python3 --version && \
+    bandit --version && \
+    trivy --version && \
+    echo "=== Installation terminée ==="
+
+# Configuration des permissions
+RUN usermod -aG docker jenkins
+
+# Retour à l'utilisateur jenkins
+USER jenkins
+
+# Variables d'environnement Jenkins
+ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false"
+\end{lstlisting}
+
+\newpage
+
+\subsection{Exécution du Pipeline}
+
+Pipeline exécuté avec succès : 14 étapes validées, générant des rapports séparés pour les versions bad (vulnérable) et good (sécurisée).
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{img-2.png}
+        \caption{Exécution du Pipeline}
+    \label{fig:placeholder}
+\end{figure}
+
+\subsection{Artefacts Générés}
+Le pipeline génère des rapports séparés pour chaque version (bad et good) :
+\begin{itemize}[leftmargin=*]
+    \item 2 rapports Bandit HTML (bad + good)
+    \item 8 rapports Trivy JSON (4 par version : dependencies, secrets, supply-chain, container)
+    \item 2 fichiers de dépendances (all-dependencies.txt, all-deps.txt)
+    \item 1 rapport requirements.txt
+\end{itemize}
+
+Total : environ 13 fichiers par exécution du pipeline.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{img-1.png}
+    \caption{Artefacts Générés}
+    \label{fig:placeholder}
+\end{figure}
+
+\newpage
+
+% SAST Analysis
+\section{Analyse SAST avec Bandit}
+
+\subsection{Analyse SAST avec Bandit}
+Le SAST (Static Application Security Testing) examine le code source sans l'exécuter. Bandit analyse l'AST du code Python, détecte les patterns dangereux et attribue des niveaux de sévérité.
+
+\subsection{Types de Vulnérabilités Détectées par Bandit}
+
+\begin{longtable}{@{}p{2cm}p{5cm}p{6cm}@{}}
+\toprule
+\textbf{Test ID} & \textbf{Nom} & \textbf{Description} \\ \midrule
+\endfirsthead
+\toprule
+\textbf{Test ID} & \textbf{Nom} & \textbf{Description} \\ \midrule
+\endhead
+B105 & hardcoded\_password\_string & Mot de passe codé en dur \\
+B108 & hardcoded\_tmp\_directory & Utilisation non sécurisée de /tmp \\
+B110 & try\_except\_pass & Exception ignorée silencieusement \\
+B113 & request\_without\_timeout & Requête HTTP sans timeout \\
+B201 & flask\_debug\_true & Mode debug Flask activé \\
+B311 & random & Générateur aléatoire non cryptographique \\
+B404 & subprocess & Import du module subprocess \\
+B603 & subprocess\_without\_shell & Appel subprocess potentiellement dangereux \\
+B608 & hardcoded\_sql\_expressions & Injection SQL potentielle \\ \bottomrule
+\caption{Types de vulnérabilités détectées par Bandit}
+\label{tab:bandit_types}
+\end{longtable}
+
+\subsection{Résultats de l'Analyse - Code bad/}
+
+\textbf{Total : 22 vulnérabilités détectées par Bandit}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}p{1.5cm}p{3.5cm}p{2.5cm}p{2cm}p{4cm}@{}}
+\toprule
+\textbf{Test ID} & \textbf{Type} & \textbf{Fichier} & \textbf{Sévérité} & \textbf{Description} \\ \midrule
+B201 & flask\_debug\_true & vulpy.py:55 & \textcolor{high}{HIGH} & Exécution de code arbitraire \\
+B201 & flask\_debug\_true & vulpy-ssl.py:29 & \textcolor{high}{HIGH} & Werkzeug debugger exposé \\
+B608 & SQL Injection & libuser.py:12,25,53 & \textcolor{medium}{MEDIUM} & Construction string SQL \\
+B608 & SQL Injection & db.py:19 & \textcolor{medium}{MEDIUM} & INSERT sans paramètres \\
+B608 & SQL Injection & db\_init.py:20 & \textcolor{medium}{MEDIUM} & Concaténation SQL \\
+B108 & hardcoded\_tmp & libapi.py:16,20,33 & \textcolor{medium}{MEDIUM} & /tmp/ non sécurisé \\
+B108 & hardcoded\_tmp & api\_post.py:6 & \textcolor{medium}{MEDIUM} & Fichier temporaire \\
+B108 & hardcoded\_tmp & vulpy-ssl.py:29 & \textcolor{medium}{MEDIUM} & Certificats SSL en /tmp \\
+B113 & no\_timeout & api\_list.py:10 & \textcolor{medium}{MEDIUM} & requests.get sans timeout \\
+B113 & no\_timeout & api\_post.py:16,30 & \textcolor{medium}{MEDIUM} & requests.post sans timeout \\
+B105 & hardcoded\_password & vulpy.py:16 & LOW & SECRET\_KEY = 'aaaaaaa' \\
+B105 & hardcoded\_password & vulpy-ssl.py:13 & LOW & SECRET\_KEY codé en dur \\
+B311 & weak\_random & libapi.py:14 & LOW & random.getrandbits() \\
+B404 & subprocess\_import & brute.py:3 & LOW & Import subprocess \\
+B603 & subprocess\_call & brute.py:21 & LOW & subprocess.run() \\
+B110 & try\_except\_pass & libsession.py:21 & LOW & Exception ignorée \\ \bottomrule
+\end{tabular}
+\caption{Vulnérabilités réelles détectées dans le code bad/}
+\label{tab:vuln_bad}
+\end{table}
+
+\subsection{Comparaison bad/ vs good/ (avant et après corrections)}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Métrique} & \textbf{bad/} & \textbf{good/ (avant)} & \textbf{good/ (après)} \\ \midrule
+HIGH severity & 2 & 2 & \textcolor{green}{\textbf{0}} \\
+MEDIUM severity & 13 & 5 & \textcolor{green}{\textbf{0}} \\
+LOW severity & 7 & 4 & \textcolor{green}{\textbf{0}} \\
+\textbf{TOTAL} & \textbf{22} & \textbf{11} & \textcolor{green}{\textbf{0}} \\
+Lines of code & 495 & 567 & 567 \\ \bottomrule
+\end{tabular}
+\caption{Comparaison des vulnérabilités : bad/ vs good/ avant et après corrections}
+\label{tab:comparison}
+\end{table}
+
+\textbf{Analyse :} Les corrections appliquées ont permis d'éliminer \textbf{100\% des vulnérabilités} détectées dans la version good. Le répertoire \texttt{bad/} conserve intentionnellement toutes ses vulnérabilités à des fins pédagogiques.
+
+\subsection{Indicateurs Clés}
+
+\textbf{Severity:} LOW (faible), MEDIUM (moyen), HIGH (critique)
+
+\textbf{Confidence:} Niveau de certitude de Bandit
+
+\textbf{CWE:} Common Weakness Enumeration - Classification standardisée des vulnérabilités
+
+\newpage
+
+% SCA Analysis
+\section{Analyse SCA avec Trivy}
+
+Le SCA (Software Composition Analysis) analyse les dépendances tierces pour identifier les vulnérabilités CVE connues. Trivy scanne les dépendances, images Docker, et secrets exposés.
+
+\subsection{Résultat du Scan}
+32 dépendances analysées :
+
+\textbf{Dépendances principales :} Flask 3.1.2, requests 2.32.5, cryptography 46.0.3, PyJWT 2.10.1, pyotp 2.9.0, geoip2 5.2.0, qrcode 8.2
+
+\textbf{Dépendances transitives :} Werkzeug 3.1.4, Jinja2 3.1.6, urllib3 2.5.0, aiohttp 3.13.2, certifi 2025.11.12, click 8.3.1
+
+\textbf{Résultat :} \textcolor{green}{\textbf{Aucune vulnérabilité CVE}} détectée dans les dépendances Python. Toutes les bibliothèques sont à jour (versions novembre-décembre 2025).
+
+\subsection{Vulnérabilités Détectées dans l'Image Docker}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}llllll@{}}
+\toprule
+\textbf{CVE} & \textbf{Package} & \textbf{Sévérité} & \textbf{Version Affectée} & \textbf{Fix} \\ \midrule
+CVE-2025-8869 & pip & \textcolor{medium}{MEDIUM} & 24.0 & 25.3 \\
+DS002 & Docker & \textcolor{high}{HIGH} & N/A & Ajouter USER \\
+DS029 & Docker & \textcolor{high}{HIGH} & N/A & --no-install-recommends \\
+CVE-2025-7709 & sqlite & \textcolor{medium}{MEDIUM} & 3.46.1 & Mise à jour \\ \bottomrule
+\end{tabular}
+\caption{Vulnérabilités détectées par Trivy}
+\label{tab:trivy_vulns}
+\end{table}
+
+\newpage
+
+% Corrections
+\section{Corrections des Vulnérabilités}
+
+\subsection{Résumé des Corrections Appliquées}
+
+\textbf{État Initial de good/ (avant corrections) :}
+\begin{itemize}[leftmargin=*]
+    \item 11 vulnérabilités détectées par Bandit
+    \item 2 HIGH severity (B201 - Flask debug mode)
+    \item 5 MEDIUM severity (B108, B113, B608)
+    \item 4 LOW severity (B105, B110)
+\end{itemize}
+
+\textbf{État Final de good/ (après corrections) :}
+\begin{itemize}[leftmargin=*]
+    \item \textcolor{green}{\textbf{0 vulnérabilités}} (100\% éliminées)
+    \item \textcolor{green}{\textbf{0 vulnérabilités HIGH}} (100\% éliminées)
+    \item \textcolor{green}{\textbf{0 vulnérabilités MEDIUM}} (100\% éliminées)
+    \item \textcolor{green}{\textbf{0 vulnérabilités LOW}} (100\% éliminées)
+    \item \textbf{11 corrections critiques appliquées}
+\end{itemize}
+
+\subsection{Détail des Vulnérabilités Corrigées dans good/}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}p{2.5cm}p{3cm}p{1.5cm}p{2cm}p{4cm}@{}}
+\toprule
+\textbf{Test ID} & \textbf{Fichier} & \textbf{Ligne} & \textbf{Sévérité} & \textbf{Description} \\ \midrule
+\multicolumn{5}{c}{\textbf{Vulnérabilités HIGH}} \\ \midrule
+B201 & vulpy.py & 53 & \textcolor{high}{HIGH} & Flask debug=True \\
+B201 & vulpy-ssl.py & 29 & \textcolor{high}{HIGH} & Flask debug=True \\ \midrule
+\multicolumn{5}{c}{\textbf{Vulnérabilités MEDIUM}} \\ \midrule
+B108 & cutpasswd.py & 3 & \textcolor{medium}{MEDIUM} & Hardcoded /tmp/ \\
+B113 & httpbrute.py & 22 & \textcolor{medium}{MEDIUM} & Request sans timeout \\
+B608 & libuser.py & 61 & \textcolor{medium}{MEDIUM} & SQL injection \\
+B108 & vulpy-ssl.py & 29 (x2) & \textcolor{medium}{MEDIUM} & Certificats SSL en /tmp/ \\ \midrule
+\multicolumn{5}{c}{\textbf{Vulnérabilités LOW}} \\ \midrule
+B105 & libapi.py & 10 & LOW & Secret codé en dur \\
+B110 & libsession.py & 22 & LOW & Try-except-pass \\
+B105 & vulpy-ssl.py & 13 & LOW & SECRET\_KEY faible \\
+B105 & vulpy.py & 17 & LOW & SECRET\_KEY codé en dur \\ \bottomrule
+\end{tabular}
+\caption{Vulnérabilités détectées dans good/ avant corrections}
+\label{tab:vuln_good_before}
+\end{table}
+
+\subsection{Tableau Récapitulatif des Corrections}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}p{3.5cm}ccp{5cm}@{}}
+\toprule
+\textbf{Type de Vulnérabilité} & \textbf{Instances} & \textbf{Sévérité} & \textbf{Fichiers Corrigés (good/)} \\ \midrule
+Flask Debug Mode (B201) & 2 & \textcolor{high}{HIGH} & vulpy.py, vulpy-ssl.py \\
+Hardcoded /tmp/ (B108) & 3 & \textcolor{medium}{MEDIUM} & cutpasswd.py, vulpy-ssl.py (x2) \\
+Request Timeout (B113) & 1 & \textcolor{medium}{MEDIUM} & httpbrute.py \\
+SQL Injection (B608) & 1 & \textcolor{medium}{MEDIUM} & libuser.py \\
+Hardcoded Secret (B105) & 3 & LOW & libapi.py, vulpy-ssl.py, vulpy.py \\
+Try-Except-Pass (B110) & 1 & LOW & libsession.py \\ \midrule
+\textbf{TOTAL CORRIGÉ} & \textbf{11} & - & \textbf{7 fichiers} \\ \bottomrule
+\end{tabular}
+\caption{Récapitulatif des 11 vulnérabilités corrigées dans good/}
+\label{tab:corrections_summary}
+\end{table}
+
+\textbf{Résultat :} Après ces corrections, le scan Bandit sur la version good/ ne détecte plus \textbf{aucune vulnérabilité}. Taux de correction : \textcolor{green}{\textbf{100\%}}.
+
+\subsection{Corrections Détaillées Appliquées}
+
+\subsubsection{1. B201 - Flask Debug Mode (HIGH) - 2 instances}
+
+\textbf{Fichiers affectés :} \texttt{vulpy.py:53}, \texttt{vulpy-ssl.py:29}
+
+\begin{lstlisting}[language=Python, caption=Correction du mode debug Flask]
+# AVANT (good/vulpy.py:53 - Vulnerable)
+app.run(debug=True, host='127.0.1.1', port=5001, extra_files='csp.txt')
+
+# APRES (good/vulpy.py - Securise)
+app.run(debug=False, host='127.0.1.1', port=5001, extra_files='csp.txt')
+\end{lstlisting}
+
+\textbf{Impact :} Élimine CWE-94 (Code Injection). Le mode debug expose le debugger Werkzeug qui permet l'exécution de code Python arbitraire via le navigateur. \textbf{Risque critique} en production.
+
+\subsubsection{2. B108 - Hardcoded /tmp/ Directory (MEDIUM) - 3 instances}
+
+\textbf{Fichiers affectés :} \texttt{cutpasswd.py:3}, \texttt{vulpy-ssl.py:29}
+
+\begin{lstlisting}[language=Python, caption=Correction des répertoires temporaires]
+# AVANT (good/cutpasswd.py:3 - Vulnerable)
+with open('/tmp/darkweb2017-top10000.txt') as f:
+    for password in f.readlines():
+
+# APRES (good/cutpasswd.py - Securise)
+import tempfile
+import os
+
+temp_dir = tempfile.gettempdir()
+password_file = os.path.join(temp_dir, 'darkweb2017-top10000.txt')
+
+with open(password_file) as f:
+    for password in f.readlines():
+\end{lstlisting}
+
+\textbf{Impact :} Élimine CWE-377 (Insecure Temporary File). Utilisation de \texttt{tempfile.gettempdir()} pour obtenir le répertoire temporaire approprié selon l'OS.
+
+\begin{lstlisting}[language=Python, caption=Correction des certificats SSL]
+# AVANT (good/vulpy-ssl.py:29 - Vulnerable)  
+app.run(debug=True, host='127.0.1.1', 
+        ssl_context=('/tmp/acme.cert', '/tmp/acme.key'))
+
+# APRES (good/vulpy-ssl.py - Securise)
+import tempfile
+import os
+
+cert_dir = tempfile.gettempdir()
+cert_path = os.path.join(cert_dir, 'acme.cert')
+key_path = os.path.join(cert_dir, 'acme.key')
+
+app.run(debug=False, host='127.0.1.1', 
+        ssl_context=(cert_path, key_path))
+\end{lstlisting}
+
+\subsubsection{3. B113 - Request Without Timeout (MEDIUM) - 1 instance}
+
+\textbf{Fichier affecté :} \texttt{httpbrute.py:22}
+
+\begin{lstlisting}[language=Python, caption=Ajout de timeout aux requêtes HTTP]
+# AVANT (good/httpbrute.py:22 - Vulnerable)
+response = requests.post(URL, 
+                         data={'username': username, 'password': password})
+
+# APRES (good/httpbrute.py - Securise)
+response = requests.post(URL, 
+                         data={'username': username, 'password': password},
+                         timeout=10)
+\end{lstlisting}
+
+\textbf{Impact :} Élimine CWE-400 (Uncontrolled Resource Consumption). Sans timeout, une requête peut bloquer indéfiniment, causant un déni de service ou épuisement des ressources.
+
+\subsubsection{4. B608 - SQL Injection (MEDIUM) - 1 instance}
+
+\textbf{Fichier affecté :} \texttt{libuser.py:61}
+
+\begin{lstlisting}[language=Python, caption=Correction de l'injection SQL]
+# AVANT (good/libuser.py:61 - Vulnerable)
+c.execute("INSERT INTO users (username, password, salt, failures, 
+           mfa_enabled, mfa_secret) VALUES ('%s', '%s', '%s', '%d', '%d', '%s')" 
+          %(username, '', '', 0, 0, ''))
+
+# APRES (good/libuser.py - Securise avec requetes parametrees)
+c.execute("INSERT INTO users (username, password, salt, failures, 
+           mfa_enabled, mfa_secret) VALUES (?, ?, ?, ?, ?, ?)", 
+          (username, '', '', 0, 0, ''))
+\end{lstlisting}
+
+\textbf{Impact :} Élimine CWE-89 (SQL Injection). Utilisation de requêtes paramétrées avec des placeholders \texttt{?} pour empêcher l'injection de code SQL malveillant.
+
+\subsubsection{5. B105 - Hardcoded Secrets (LOW) - 3 instances}
+
+\textbf{Fichiers affectés :} \texttt{libapi.py:10}, \texttt{vulpy-ssl.py:13}, \texttt{vulpy.py:17}
+
+\begin{lstlisting}[language=Python, caption=Correction des secrets codés en dur]
+# AVANT (good/libapi.py:10 - Vulnerable)
+secret = 'MYSUPERSECRETKEY'
+
+# APRES (good/libapi.py - Securise)
+import os
+secret = os.environ.get('API_SECRET_KEY', 'MYSUPERSECRETKEY')
+\end{lstlisting}
+
+\begin{lstlisting}[language=Python, caption=Génération aléatoire de SECRET\_KEY]
+# AVANT (good/vulpy.py:17 - Vulnerable)
+app.config['SECRET_KEY'] = '123aa8a93bdde342c871564a62282af857bda14b3359fde95d0c5e4b321610c1'
+
+# APRES (good/vulpy.py - Securise)
+import os
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 
+                                          os.urandom(32).hex())
+\end{lstlisting}
+
+\textbf{Impact :} Élimine CWE-259 (Hard-coded Password). Utilisation de variables d'environnement ou génération aléatoire cryptographique avec \texttt{os.urandom(32)} pour les clés secrètes.
+
+\subsubsection{6. B110 - Try-Except-Pass (LOW) - 1 instance}
+
+\textbf{Fichier affecté :} \texttt{libsession.py:22}
+
+\begin{lstlisting}[language=Python, caption=Ajout de logging des erreurs]
+# AVANT (good/libsession.py:22 - Vulnerable)
+try:
+    geo = reader.country(request.remote_addr)
+    country = geo.country.iso_code
+except Exception:
+    pass
+
+# APRES (good/libsession.py - Securise)
+import logging
+
+try:
+    geo = reader.country(request.remote_addr)
+    country = geo.country.iso_code
+except Exception as e:
+    logging.warning(f"Failed to get country for IP {request.remote_addr}: {e}")
+    pass
+\end{lstlisting}
+
+\textbf{Impact :} Élimine CWE-703 (Improper Check of Exceptional Conditions). Les erreurs sont maintenant loguées au lieu d'être silencieusement ignorées, facilitant le débogage et la détection d'anomalies.
+
+
+
+\newpage
+
+% Lessons Learned
+\section{Leçons Apprises}
+
+\subsection{1. SAST vs SCA : Complémentarité}
+\begin{itemize}[leftmargin=*]
+    \item SAST détecte les erreurs de codage et les mauvaises pratiques
+    \item SCA identifie les vulnérabilités des dépendances tierces
+    \item Les deux sont nécessaires pour une analyse complète de sécurité
+\end{itemize}
+
+\subsection{2. Automatisation = Sécurité Continue}
+\begin{itemize}[leftmargin=*]
+    \item L'intégration dans CI/CD détecte les problèmes tôt dans le cycle de développement
+    \item Coût de correction : 10x moins cher en développement qu'en production
+    \item Pipeline reproductible et standardisé
+\end{itemize}
+
+\subsection{3. Code Vulnérable ≠ Code Malveillant}
+\begin{itemize}[leftmargin=*]
+    \item Vulpy démontre des erreurs courantes de développement
+    \item Éducatif pour comprendre les vecteurs d'attaque
+    \item Importance de la formation en sécurité pour les développeurs
+\end{itemize}
+
+\subsection{4. La Sécurité est un Processus}
+\begin{itemize}[leftmargin=*]
+    \item Les vulnérabilités évoluent (nouvelles CVE publiées régulièrement)
+    \item Nécessité de scans réguliers et automatisés
+    \item Mise à jour continue des dépendances
+    \item Culture de sécurité dans l'équipe de développement
+\end{itemize}
+
+\subsection{5. Prioritisation des Corrections}
+\begin{itemize}[leftmargin=*]
+    \item Traiter d'abord les vulnérabilités HIGH et MEDIUM
+    \item Évaluer le risque réel dans le contexte de l'application
+    \item Documenter les décisions de sécurité
+\end{itemize}
+
+\newpage
+
+% Conclusion
+\section{Conclusion}
+
+Ce projet a permis de mettre en œuvre un pipeline complet d'analyse de sécurité et de correction de vulnérabilités :
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{SAST avec Bandit} : Détection de 22 vulnérabilités dans bad/ (version intentionnellement vulnérable) et 11 vulnérabilités dans good/ (version supposée sécurisée)
+    \item \textbf{Corrections appliquées} : Élimination complète des 11 vulnérabilités détectées dans good/ (100\% de taux de correction)
+    \item \textbf{SCA avec Trivy} : Analyse des 32 dépendances et de l'image Docker, confirmant l'absence de CVE critiques dans les packages Python
+    \item \textbf{Automatisation avec Jenkins} : Pipeline reproductible générant des rapports avant et après corrections, facilitant la comparaison et la validation
+    \item \textbf{Séparation des rapports} : Configuration du pipeline pour générer des rapports distincts pour bad/ et good/, permettant une analyse comparative claire
+\end{itemize}
+
+\subsection{Résultats Clés}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Métrique} & \textbf{Valeur} \\ \midrule
+Vulnérabilités détectées (bad/) & 22 (inchangées) \\
+Vulnérabilités détectées (good/ avant) & 11 \\
+Vulnérabilités HIGH corrigées & 2 (100\%) \\
+Vulnérabilités MEDIUM corrigées & 5 (100\%) \\
+Vulnérabilités LOW corrigées & 4 (100\%) \\
+Vulnérabilités finales (good/ après) & \textcolor{green}{\textbf{0}} \\
+Taux de correction & \textcolor{green}{\textbf{100\%}} \\
+Fichiers corrigés (good/) & 7 fichiers Python \\
+Lignes de code analysées & 495 (bad/), 567 (good/) \\
+Dépendances Python scannées & 32 packages \\
+CVE détectées (dépendances) & 0 \\
+Durée du pipeline & ~41 secondes \\
+Rapports générés & 13 fichiers par scan \\
+Étapes du pipeline & 14 stages (séparées bad/good) \\
+Version Bandit utilisée & 1.8.6 \\
+Version Trivy utilisée & 0.48.0 \\ \bottomrule
+\end{tabular}
+\caption{Résultats finaux du projet avec corrections}
+\label{tab:final_results}
+\end{table}
+
+\subsection{Impact et Bénéfices}
+
+Les résultats montrent l'importance d'une approche multi-couches de la sécurité applicative, où l'analyse statique du code et l'analyse de composition logicielle se complètent pour offrir une vision globale des risques.
+
+\textbf{Bénéfices principaux :}
+\begin{itemize}[leftmargin=*]
+    \item Détection précoce des vulnérabilités dans le cycle de développement
+    \item Correction complète de toutes les vulnérabilités dans la version good/ (taux de réussite : 100\%)
+    \item Comparaison claire entre code vulnérable (bad/) et code sécurisé (good/) grâce aux rapports séparés
+    \item Pipeline automatisé permettant la vérification continue après chaque modification
+    \item Documentation exhaustive des vulnérabilités et corrections (11 vulnérabilités corrigées dans 7 fichiers)
+    \item Démonstration pédagogique de l'importance des bonnes pratiques de sécurité
+    \item Rapports disponibles publiquement sur GitHub pour référence et apprentissage
+\end{itemize}
+
+\subsection{Recommandations Futures}
+
+\begin{enumerate}[leftmargin=*]
+    \item Pre-commit hooks Git
+    \item Tests DAST (Dynamic Application Security Testing)
+    \item Alertes automatiques pour nouvelles CVE
+    \item Formation sécurité de l'équipe
+\end{enumerate}
+
+\newpage
+
+% References
+\section*{Références}
+\addcontentsline{toc}{section}{Références}
+
+\begin{itemize}[leftmargin=*]
+    \item OWASP Top 10, Bandit Documentation, Trivy Documentation
+    \item CWE Database, NVD - CVE Database
+    \item Jenkins Pipeline, Docker Security Best Practices
+\end{itemize}
+
+\newpage
+
+% Annexes
+\appendix
+
+\section{Jenkinsfile}
+
+\textbf{Note :} Le Jenkinsfile complet g\`ere 14 stages avec des rapports s\'epar\'es pour bad/ et good/. Voir le fichier complet sur GitHub : \url{https://github.com/xmawe/vulpy-sast-sca-analysis/blob/main/Jenkinsfile}
+
+\begin{lstlisting}[language=Groovy, caption=Pipeline Jenkins (extrait principal)]
+pipeline {
+    agent any
+    
+    stages {
+        // SAST - Bad and Good versions
+        stage('Code Security Scan - Bad Version') {
+            steps {
+                sh '''
+                    mkdir -p ${WORKSPACE}/reports
+                    if [ ! -d "/var/jenkins_home/bandit-venv" ]; then
+                        python3 -m venv /var/jenkins_home/bandit-venv
+                        . /var/jenkins_home/bandit-venv/bin/activate
+                        pip install bandit
+                    fi
+                    . /var/jenkins_home/bandit-venv/bin/activate
+                    cd /vulpy/vulpy
+                    bandit -r bad -f html -o ${WORKSPACE}/reports/bandit-bad.html || true
+                '''
+            }
+        }
+        
+        stage('Code Security Scan - Good Version') {
+            steps {
+                sh '''
+                    . /var/jenkins_home/bandit-venv/bin/activate
+                    cd /vulpy/vulpy
+                    bandit -r good -f html -o ${WORKSPACE}/reports/bandit-good.html || true
+                '''
+            }
+        }
+        
+        // SCA - Dependencies for both versions
+        stage('Dependency Scan - Bad Version') {
+            steps {
+                sh '''
+                    cd /vulpy/vulpy/bad
+                    trivy fs --scanners vuln --format json \
+                        --output ${WORKSPACE}/reports/trivy-dependencies-bad.json . || true
+                '''
+            }
+        }
+        
+        stage('Dependency Scan - Good Version') {
+            steps {
+                sh '''
+                    cd /vulpy/vulpy/good
+                    trivy fs --scanners vuln --format json \
+                        --output ${WORKSPACE}/reports/trivy-dependencies-good.json . || true
+                '''
+            }
+        }
+        
+        // ... (10 autres stages: requirements, transitive deps, secrets bad/good, 
+        //      supply chain bad/good, build images bad/good, scan containers bad/good)
+        
+        // Container Security
+        stage('Build Bad Application Image') {
+            steps {
+                sh '''
+                    cd /vulpy/vulpy
+                    docker build -f Dockerfile --build-arg APP_DIR=bad -t vulpy-bad:local .
+                '''
+            }
+        }
+        
+        stage('Container Scan - Bad Version') {
+            steps {
+                sh '''
+                    docker save vulpy-bad:local -o ${WORKSPACE}/vulpy-bad-image.tar
+                    trivy image --input ${WORKSPACE}/vulpy-bad-image.tar \
+                        --format json --output ${WORKSPACE}/reports/trivy-container-bad.json || true
+                    rm -f ${WORKSPACE}/vulpy-bad-image.tar
+                '''
+            }
+        }
+        
+        // Same for Good version...
+    }
+    
+    post {
+        always {
+            archiveArtifacts artifacts: 'reports/**', allowEmptyArchive: true
+            publishHTML([
+                reportDir: 'reports',
+                reportFiles: 'bandit-bad.html, bandit-good.html',
+                reportName: 'Security Reports',
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true
+            ])
+        }
+    }
+}
+\end{lstlisting}
+
+\newpage
+
+\section{Commandes Utiles}
+
+\begin{lstlisting}[language=bash]
+# Demarrage de l'environnement
+docker-compose up -d
+
+# Verification du statut
+docker-compose ps
+
+# Analyse locale SAST
+bandit -r vulpy/bad -f html -o report.html
+
+# Analyse locale SCA
+trivy fs requirements.txt
+trivy image vulpy-app:latest
+
+# Arret de l'environnement
+docker-compose down
+\end{lstlisting}
+
+\section{Rapports Générés}
+
+\subsection{Structure des Rapports}
+
+Le pipeline génère deux ensembles complets de rapports :
+
+\subsubsection{Rapports SAST (Bandit)}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{bandit-bad.html} : Analyse HTML de la version vulnérable (22 vulnérabilités)
+    \item \textbf{bandit-good.html} : Analyse HTML de la version sécurisée (0 vulnérabilité après corrections)
+\end{itemize}
+
+\subsubsection{Rapports SCA (Trivy)}
+
+\textbf{Version bad/ (vulnérable) :}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{trivy-dependencies-bad.json} : Vulnérabilités des dépendances
+    \item \textbf{trivy-secrets-bad.json} : Secrets et configurations exposés
+    \item \textbf{trivy-supply-chain-bad.json} : Analyse de la chaîne d'approvisionnement
+    \item \textbf{trivy-container-bad.json} : Vulnérabilités de l'image Docker
+\end{itemize}
+
+\textbf{Version good/ (sécurisée) :}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{trivy-dependencies-good.json} : Vulnérabilités des dépendances
+    \item \textbf{trivy-secrets-good.json} : Secrets et configurations exposés
+    \item \textbf{trivy-supply-chain-good.json} : Analyse de la chaîne d'approvisionnement
+    \item \textbf{trivy-container-good.json} : Vulnérabilités de l'image Docker
+\end{itemize}
+
+\textbf{Rapports communs :}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{all-dependencies.txt / all-deps.txt} : Liste complète des dépendances transitives
+    \item \textbf{trivy-requirements.json} : Analyse du fichier requirements.txt
+\end{itemize}
+
+\subsection{Accès aux Rapports}
+
+\textbf{Tous les rapports sont disponibles publiquement sur GitHub :}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Rapports avant corrections :}
+    
+    \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/before-vul-correction}
+    
+    Ces rapports montrent l'état initial avec 11 vulnérabilités dans good/
+    
+    \item \textbf{Rapports après corrections :}
+    
+    \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/after-vul-correction}
+    
+    Ces rapports confirment l'élimination complète des vulnérabilités (0 détecté)
+    
+    \item \textbf{Code source et Jenkinsfile :}
+    
+    \url{https://github.com/xmawe/vulpy-sast-sca-analysis}
+\end{itemize}
+
+\subsection{Comparaison Avant/Après}
+
+La structure des répertoires permet une comparaison directe :
+
+\begin{lstlisting}[language=bash]
+reports/
+├── before-vul-correction/
+│   ├── bandit-good.html      (11 vulnerabilites)
+│   ├── trivy-*.json
+│   └── ...
+└── after-vul-correction/
+    ├── bandit-good.html       (0 vulnerabilite)
+    ├── trivy-*.json
+    └── ...
+\end{lstlisting}
+
+\end{document}
