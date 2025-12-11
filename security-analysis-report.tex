@@ -67,7 +67,7 @@
     {\Huge\bfseries Rapport d'Analyse de Sécurité\\[0.5cm]}
     {\LARGE Projet Vulpy\\[2cm]}
     
-    {\large Analyse SAST et SCA avec Jenkins, Bandit et Trivy\\[3cm]}
+    {\large Analyse SAST, SCA et DAST avec Jenkins, Bandit, Trivy et OWASP ZAP\\[3cm]}
     
     {\large Date : 11 décembre 2025\\[0.5cm]}
     {\large Réalisé par : JADA Mohamed\\[0.5cm]}
@@ -80,15 +80,19 @@
 % Executive Summary
 \section{Résumé Exécutif}
 
-Ce rapport présente une analyse complète de sécurité du projet Vulpy, une application web Flask volontairement vulnérable, en utilisant des outils d'analyse statique (SAST) et d'analyse de composition logicielle (SCA). L'objectif est d'identifier, documenter et corriger les vulnérabilités présentes dans le code source et les dépendances.
+Ce rapport présente une analyse complète de sécurité du projet Vulpy, une application web Flask volontairement vulnérable, en utilisant des outils d'analyse statique (SAST), d'analyse de composition logicielle (SCA), et de tests dynamiques (DAST). L'objectif est d'identifier, documenter et corriger les vulnérabilités présentes dans le code source, les dépendances et la configuration runtime de l'application.
 
 \subsection*{Informations du Projet}
 \begin{itemize}[leftmargin=*]
     \item \textbf{Lien du projet :} \url{https://github.com/xmawe/vulpy-sast-sca-analysis}
     
-    \item \textbf{Rapports avant corrections :} \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/before-vul-correction}
+    \item \textbf{Rapports SAST avant corrections :} \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/sast/before-vul-correction}
     
-    \item \textbf{Rapports après corrections :} \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/after-vul-correction}
+    \item \textbf{Rapports SAST après corrections :} \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/sast/after-vul-correction}
+    
+    \item \textbf{Rapports DAST avant corrections :} \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/dast/before-val-correction}
+    
+    \item \textbf{Rapports DAST après corrections :} \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/dast/after-val-correction}
 \end{itemize}
 
 \subsection*{Résultats Clés}
@@ -119,12 +123,13 @@ Ce rapport présente une analyse complète de sécurité du projet Vulpy, une ap
     \item Pipeline CI/CD avec Jenkins
     \item Analyse SAST avec Bandit
     \item Analyse SCA avec Trivy
+    \item Analyse DAST avec OWASP ZAP
     \item Correction des vulnérabilités critiques et moyennes
 \end{enumerate}
 
 \subsection{Outils Utilisés}
 
-Bandit 1.8.6 (SAST), Trivy 0.48.0 (SCA), Jenkins (CI/CD), Docker
+Bandit 1.8.6 (SAST), Trivy 0.48.0 (SCA), OWASP ZAP (DAST), Jenkins (CI/CD), Docker
 
 \newpage
 
@@ -214,7 +219,7 @@ CMD ["python", "vulpy.py"]
 
 \subsection{Pipeline Jenkins}
 
-Le pipeline exécute 10 étapes : SAST (Bandit), SCA (Trivy sur dépendances, secrets, supply chain), build Docker, et scan d'image.
+Le pipeline exécute plusieurs étapes : SAST (Bandit), SCA (Trivy sur dépendances, secrets, supply chain), build Docker, scan d'image, et DAST (OWASP ZAP).
 
 \subsection{Dockerfile.jenkins}
 
@@ -304,11 +309,12 @@ Le pipeline génère des rapports séparés pour chaque version (bad et good) :
 \begin{itemize}[leftmargin=*]
     \item 2 rapports Bandit HTML (bad + good)
     \item 8 rapports Trivy JSON (4 par version : dependencies, secrets, supply-chain, container)
+    \item 6 rapports DAST OWASP ZAP (3 formats × 2 versions : HTML, XML, JSON)
     \item 2 fichiers de dépendances (all-dependencies.txt, all-deps.txt)
     \item 1 rapport requirements.txt
 \end{itemize}
 
-Total : environ 13 fichiers par exécution du pipeline.
+Total : environ 19 fichiers par exécution du pipeline.
 
 \begin{figure}[H]
     \centering
@@ -436,6 +442,286 @@ CVE-2025-7709 & sqlite & \textcolor{medium}{MEDIUM} & 3.46.1 & Mise à jour \\ \
 \caption{Vulnérabilités détectées par Trivy}
 \label{tab:trivy_vulns}
 \end{table}
+
+\newpage
+
+% DAST Analysis
+\section{Analyse DAST avec OWASP ZAP}
+
+Le DAST (Dynamic Application Security Testing) effectue des tests de sécurité sur l'application en cours d'exécution, simulant des attaques réelles pour détecter les vulnérabilités de configuration et d'implémentation qui ne peuvent pas être identifiées par l'analyse statique.
+
+\subsection{Configuration de l'Environnement DAST}
+
+\subsubsection{Outils Utilisés}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{OWASP ZAP (Zed Attack Proxy)} : Scanner de sécurité open-source
+    \item \textbf{Docker} : Conteneurisation des applications et de ZAP
+    \item \textbf{Jenkins Pipeline} : Automatisation du scan DAST
+\end{itemize}
+
+\subsubsection{Architecture de Test}
+
+Les applications sont déployées dans des conteneurs Docker connectés au réseau \texttt{vulpy-sast-sca-analysis\_default} :
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Version Bad} : \texttt{http://vulpy-bad-app:5000/} (port externe 5001)
+    \item \textbf{Version Good} : \texttt{http://vulpy-good-app:5000/} (port externe 5002)
+    \item \textbf{ZAP Scanner} : Conteneur éphémère lancé pour chaque scan
+\end{itemize}
+
+\subsubsection{Configuration du Scan}
+
+\begin{lstlisting}[language=bash, caption=Commande ZAP Baseline Scan]
+docker run --rm -u root \
+    --network vulpy-sast-sca-analysis_default \
+    -v ${WORKSPACE}/reports:/zap/wrk:rw \
+    zaproxy/zap-stable \
+    zap-baseline.py \
+        -t http://vulpy-bad-app:5000/ \
+        -r zap-baseline-report-bad.html \
+        -x zap-baseline-report-bad.xml \
+        -J zap-baseline-report-bad.json \
+        -I
+\end{lstlisting}
+
+Paramètres :
+\begin{itemize}[leftmargin=*]
+    \item \texttt{-u root} : Permissions d'écriture pour les rapports
+    \item \texttt{-t} : URL cible à scanner
+    \item \texttt{-r/-x/-J} : Génération des rapports HTML, XML et JSON
+    \item \texttt{-I} : Ignore les avertissements pour ne pas bloquer le pipeline
+\end{itemize}
+
+\subsection{Résultats du Scan DAST}
+
+\subsubsection{Version Bad (Vulnérable)}
+
+Le scan OWASP ZAP a détecté \textbf{16 avertissements} (WARN-NEW) dans la version vulnérable :
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}p{7cm}p{2cm}p{1.5cm}@{}}
+\toprule
+\textbf{Vulnérabilité} & \textbf{Code ZAP} & \textbf{Occurrences} \\ \midrule
+Cross-Domain JavaScript Source File Inclusion & 10017 & 1 \\
+\textcolor{red}{\textbf{Missing Anti-clickjacking Header}} & \textbf{10020} & \textbf{8} \\
+\textcolor{red}{\textbf{X-Content-Type-Options Header Missing}} & \textbf{10021} & \textbf{12} \\
+Information Disclosure - Suspicious Comments & 10027 & 2 \\
+Server Leaks Version Information & 10036 & 11 \\
+Content Security Policy Header Not Set & 10038 & 12 \\
+Non-Storable Content & 10049 & 13 \\
+\textcolor{red}{\textbf{Cookie without SameSite Attribute}} & \textbf{10054} & \textbf{1} \\
+Permissions Policy Header Not Set & 10063 & 13 \\
+Modern Web Application & 10109 & 1 \\
+Authentication Request Identified & 10111 & 2 \\
+Session Management Response Identified & 10112 & 1 \\
+\textcolor{red}{\textbf{Absence of Anti-CSRF Tokens}} & \textbf{10202} & \textbf{3} \\
+Sub Resource Integrity Attribute Missing & 90003 & 10 \\
+Insufficient Site Isolation Against Spectre & 90004 & 12 \\
+Application Error Disclosure & 90022 & 1 \\ \bottomrule
+\end{tabular}
+\caption{Vulnérabilités DAST détectées - Version Bad}
+\end{table}
+
+\textbf{Total :} FAIL-NEW: 0 | FAIL-INPROG: 0 | \textcolor{medium}{\textbf{WARN-NEW: 16}} | WARN-INPROG: 0 | INFO: 0 | PASS: 51
+
+\subsubsection{Version Good (Après Corrections DAST)}
+
+Le scan sur la version corrigée montre \textbf{~10 avertissements} après les corrections appliquées :
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}p{7cm}p{2cm}p{1.5cm}@{}}
+\toprule
+\textbf{Vulnérabilité} & \textbf{Code ZAP} & \textbf{Statut} \\ \midrule
+Cross-Domain JavaScript Source File Inclusion & 10017 & ⚠️ Présent \\
+\textcolor{green}{\textbf{Missing Anti-clickjacking Header}} & \textbf{10020} & \textcolor{green}{\textbf{✓ CORRIGÉ}} \\
+\textcolor{green}{\textbf{X-Content-Type-Options Header Missing}} & \textbf{10021} & \textcolor{green}{\textbf{✓ CORRIGÉ}} \\
+Server Leaks Version Information & 10036 & ⚠️ Présent \\
+Non-Storable Content & 10049 & ⚠️ Présent \\
+Cookie without SameSite Attribute & 10054 & ⚠️ Présent \\
+CSP: Failure to Define Directive with No Fallback & 10055 & ⚠️ Présent \\
+Permissions Policy Header Not Set & 10063 & ⚠️ Présent \\
+Authentication Request Identified & 10111 & ⚠️ Présent \\
+Session Management Response Identified & 10112 & ⚠️ Présent \\
+\textcolor{green}{\textbf{Absence of Anti-CSRF Tokens}} & \textbf{10202} & \textcolor{green}{\textbf{✓ CORRIGÉ}} \\
+Sub Resource Integrity Attribute Missing & 90003 & ⚠️ Présent \\
+Insufficient Site Isolation Against Spectre & 90004 & ⚠️ Présent \\ \bottomrule
+\end{tabular}
+\caption{Comparaison DAST - Version Good}
+\end{table}
+
+\subsection{Corrections DAST Appliquées}
+
+Trois vulnérabilités critiques identifiées par le scan DAST ont été corrigées dans la version good :
+
+\subsubsection{1. Protection Anti-CSRF (Cross-Site Request Forgery) [10202]}
+
+\textbf{Problème :} Les formulaires de l'application ne comportaient aucune protection contre les attaques CSRF, permettant à un attaquant de forcer un utilisateur authentifié à exécuter des actions non désirées (changement de mot de passe, modification de profil, etc.).
+
+\textbf{Impact :} CRITIQUE - Un attaquant peut créer une page malveillante qui soumet automatiquement des formulaires au nom de la victime si celle-ci est authentifiée.
+
+\textbf{Solution Implémentée :}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Installation de Flask-WTF :}
+    \begin{lstlisting}[language=bash]
+# Ajout dans requirements.txt
+Flask-WTF
+    \end{lstlisting}
+    
+    \item \textbf{Configuration de CSRFProtect :}
+    \begin{lstlisting}[language=Python]
+# vulpy/good/vulpy.py
+from flask_wtf.csrf import CSRFProtect
+
+app.config['WTF_CSRF_TIME_LIMIT'] = None
+csrf = CSRFProtect(app)
+    \end{lstlisting}
+    
+    \item \textbf{Ajout de tokens CSRF dans les templates :}
+    \begin{lstlisting}[language=HTML]
+<!-- vulpy/good/templates/user.login.mfa.html -->
+<form method="POST">
+    <input type="hidden" name="csrf_token" 
+           value="{{ csrf_token() }}"/>
+    <!-- ... autres champs du formulaire -->
+</form>
+    \end{lstlisting}
+\end{enumerate}
+
+\textbf{Formulaires protégés :}
+\begin{itemize}[leftmargin=*]
+    \item \texttt{user.login.mfa.html} : Formulaire de connexion
+    \item \texttt{user.create.html} : Création d'utilisateur
+    \item \texttt{user.chpasswd.html} : Changement de mot de passe
+    \item \texttt{mfa.enable.html} : Activation de l'authentification multi-facteurs
+\end{itemize}
+
+\textbf{Résultat :} ✓ Protection CSRF active sur tous les formulaires. Le serveur rejette automatiquement toute requête POST sans token CSRF valide.
+
+\subsubsection{2. Protection Anti-Clickjacking [10020]}
+
+\textbf{Problème :} Absence de l'en-tête HTTP \texttt{X-Frame-Options}, permettant à des sites malveillants d'embarquer l'application dans une iframe invisible et de piéger les utilisateurs (attaque par clickjacking).
+
+\textbf{Impact :} ÉLEVÉ - Un attaquant peut créer une page malveillante avec une iframe transparente contenant votre application, trompant l'utilisateur pour qu'il clique sur des éléments cachés.
+
+\textbf{Solution Implémentée :}
+
+\begin{lstlisting}[language=Python, caption=Ajout des en-têtes de sécurité]
+# vulpy/good/vulpy.py
+@app.after_request
+def add_security_headers(response):
+    # CSP header
+    if csp:
+        response.headers['Content-Security-Policy'] = csp
+    
+    # Anti-clickjacking protection
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    
+    # Prevent MIME type sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    
+    return response
+\end{lstlisting}
+
+\textbf{En-têtes ajoutés :}
+\begin{itemize}[leftmargin=*]
+    \item \texttt{X-Frame-Options: SAMEORIGIN} : Autorise uniquement l'embarquement depuis le même domaine
+    \item \texttt{X-Content-Type-Options: nosniff} : Empêche le navigateur de deviner le type MIME
+\end{itemize}
+
+\textbf{Résultat :} ✓ L'application ne peut plus être embarquée dans des iframes provenant de domaines tiers, éliminant le risque de clickjacking.
+
+\subsubsection{3. Protection contre le MIME Sniffing [10021]}
+
+\textbf{Problème :} Absence de l'en-tête HTTP \texttt{X-Content-Type-Options}, permettant aux navigateurs de "deviner" le type MIME d'un fichier, ce qui peut conduire à l'exécution de contenu malveillant.
+
+\textbf{Impact :} MOYEN - Un attaquant peut téléverser un fichier malveillant déguisé en fichier inoffensif. Sans cet en-tête, le navigateur peut ignorer le Content-Type déclaré et exécuter le fichier comme du JavaScript, permettant des attaques XSS.
+
+\textbf{Solution Implémentée :}
+
+Cette protection a été ajoutée en même temps que la correction anti-clickjacking (voir code ci-dessus). L'en-tête \texttt{X-Content-Type-Options: nosniff} force le navigateur à respecter strictement le type MIME déclaré par le serveur.
+
+\textbf{Résultat :} ✓ Le navigateur ne peut plus "deviner" le type de contenu, empêchant l'exécution de fichiers malveillants déguisés.
+
+\subsection{Comparaison Avant/Après Corrections DAST}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Métrique} & \textbf{Bad} & \textbf{Good (Avant)} & \textbf{Good (Après)} \\ \midrule
+Avertissements Totaux & 16 & 13 & \textcolor{green}{\textbf{~10}} \\
+Absence Anti-CSRF & ⚠️ 3 & ⚠️ 4 & \textcolor{green}{\textbf{✓ 0}} \\
+Missing Anti-clickjacking & ⚠️ 8 & ⚠️ 8 & \textcolor{green}{\textbf{✓ 0}} \\
+X-Content-Type-Options Missing & ⚠️ 12 & ⚠️ 12 & \textcolor{green}{\textbf{✓ 0}} \\
+\textbf{Vulnérabilités Corrigées} & \textbf{-} & \textbf{-} & \textcolor{green}{\textbf{3}} \\ \bottomrule
+\end{tabular}
+\caption{Comparaison des résultats DAST avant/après corrections}
+\end{table}
+
+\subsection{Importance du DAST dans la Stratégie de Sécurité}
+
+Le DAST complète de manière essentielle les analyses SAST et SCA :
+
+\begin{table}[H]
+\centering
+\begin{tabular}{@{}p{2.5cm}p{4cm}p{4cm}p{3cm}@{}}
+\toprule
+\textbf{Type} & \textbf{Ce qui est analysé} & \textbf{Ce qui est détecté} & \textbf{Quand l'utiliser} \\ \midrule
+\textbf{SAST} & Code source statique & Vulnérabilités dans le code (SQL injection, XSS dans le code) & Pendant le développement \\
+\textbf{SCA} & Dépendances tierces & CVE dans les bibliothèques, versions obsolètes & Pendant le build \\
+\textbf{DAST} & Application en exécution & Configurations, en-têtes HTTP, cookies, comportement runtime & Après le déploiement \\ \bottomrule
+\end{tabular}
+\caption{Complémentarité SAST, SCA et DAST}
+\end{table}
+
+\textbf{Vulnérabilités uniquement détectables par DAST :}
+\begin{itemize}[leftmargin=*]
+    \item En-têtes HTTP de sécurité manquants (X-Frame-Options, CSP, etc.)
+    \item Configuration incorrecte des cookies (SameSite, Secure, HttpOnly)
+    \item Problèmes d'authentification et de gestion de session
+    \item Vulnérabilités liées à la configuration runtime
+    \item Interaction entre composants en environnement réel
+\end{itemize}
+
+\subsection{Analyse Détaillée de 2 Alertes Medium}
+
+\subsubsection{Alerte 1 : Server Leaks Version Information [10036]}
+
+\textbf{Signification :} Le serveur web expose des informations sur sa version et sa technologie via l'en-tête HTTP \texttt{Server}, révélant qu'il s'agit de Werkzeug (le serveur de développement Flask).
+
+\textbf{Pourquoi c'est problématique :}
+
+Cette fuite d'information facilite considérablement le travail d'un attaquant en lui révélant exactement quelle technologie et quelle version sont utilisées. Avec cette information, l'attaquant peut rechercher les CVE (vulnérabilités) spécifiques à cette version de Werkzeug et exploiter des failles connues. De plus, cela indique que l'application utilise le serveur de développement Flask en production, ce qui est une mauvaise pratique de sécurité car Werkzeug n'est pas conçu pour un environnement de production et manque de protections essentielles.
+
+\textbf{Occurrences détectées :} 11 pages (toutes les réponses HTTP)
+
+\textbf{Exemple d'en-tête exposé :}
+\begin{lstlisting}
+Server: Werkzeug/3.1.4 Python/3.11.11
+\end{lstlisting}
+
+\subsubsection{Alerte 2 : Content Security Policy (CSP) Header Not Set [10038]}
+
+\textbf{Signification :} L'application ne définit pas d'en-tête \texttt{Content-Security-Policy}, qui contrôle quelles ressources (scripts, styles, images) peuvent être chargées et exécutées dans le navigateur.
+
+\textbf{Pourquoi c'est problématique :}
+
+L'absence de CSP laisse l'application vulnérable aux attaques XSS (Cross-Site Scripting) car le navigateur acceptera et exécutera n'importe quel script JavaScript, même ceux injectés par un attaquant. Sans CSP, un attaquant peut injecter du code malveillant qui sera exécuté avec les mêmes privilèges que l'application légitime, permettant le vol de cookies de session, la redirection vers des sites malveillants, ou la modification du contenu de la page. Une CSP bien configurée agit comme une couche de défense en profondeur qui limite considérablement l'impact d'une éventuelle faille XSS en restreignant les sources autorisées pour le chargement de ressources.
+
+\textbf{Occurrences détectées :} 12 pages
+
+\textbf{Recommandation :} Implémenter une CSP stricte comme :
+\begin{lstlisting}
+Content-Security-Policy: default-src 'self'; 
+    script-src 'self'; style-src 'self' 'unsafe-inline'; 
+    img-src 'self' data:
+\end{lstlisting}
 
 \newpage
 
@@ -701,8 +987,9 @@ Ce projet a permis de mettre en œuvre un pipeline complet d'analyse de sécurit
 
 \begin{itemize}[leftmargin=*]
     \item \textbf{SAST avec Bandit} : Détection de 22 vulnérabilités dans bad/ (version intentionnellement vulnérable) et 11 vulnérabilités dans good/ (version supposée sécurisée)
-    \item \textbf{Corrections appliquées} : Élimination complète des 11 vulnérabilités détectées dans good/ (100\% de taux de correction)
+    \item \textbf{Corrections SAST appliquées} : Élimination complète des 11 vulnérabilités détectées dans good/ (100\% de taux de correction)
     \item \textbf{SCA avec Trivy} : Analyse des 32 dépendances et de l'image Docker, confirmant l'absence de CVE critiques dans les packages Python
+    \item \textbf{DAST avec OWASP ZAP} : Détection de 16 avertissements dans bad/ et 13 dans good/, correction de 3 vulnérabilités critiques (Anti-CSRF, Anti-clickjacking, X-Content-Type-Options)
     \item \textbf{Automatisation avec Jenkins} : Pipeline reproductible générant des rapports avant et après corrections, facilitant la comparaison et la validation
     \item \textbf{Séparation des rapports} : Configuration du pipeline pour générer des rapports distincts pour bad/ et good/, permettant une analyse comparative claire
 \end{itemize}
@@ -714,22 +1001,27 @@ Ce projet a permis de mettre en œuvre un pipeline complet d'analyse de sécurit
 \begin{tabular}{@{}ll@{}}
 \toprule
 \textbf{Métrique} & \textbf{Valeur} \\ \midrule
-Vulnérabilités détectées (bad/) & 22 (inchangées) \\
-Vulnérabilités détectées (good/ avant) & 11 \\
-Vulnérabilités HIGH corrigées & 2 (100\%) \\
-Vulnérabilités MEDIUM corrigées & 5 (100\%) \\
-Vulnérabilités LOW corrigées & 4 (100\%) \\
-Vulnérabilités finales (good/ après) & \textcolor{green}{\textbf{0}} \\
-Taux de correction & \textcolor{green}{\textbf{100\%}} \\
+Vulnérabilités SAST détectées (bad/) & 22 (inchangées) \\
+Vulnérabilités SAST détectées (good/ avant) & 11 \\
+Vulnérabilités SAST HIGH corrigées & 2 (100\%) \\
+Vulnérabilités SAST MEDIUM corrigées & 5 (100\%) \\
+Vulnérabilités SAST LOW corrigées & 4 (100\%) \\
+Vulnérabilités SAST finales (good/ après) & \textcolor{green}{\textbf{0}} \\
+Avertissements DAST détectés (bad/) & 16 \\
+Avertissements DAST détectés (good/ avant) & 13 \\
+Vulnérabilités DAST corrigées (good/) & \textcolor{green}{\textbf{3}} \\
+Avertissements DAST finaux (good/ après) & \textcolor{green}{\textbf{~10}} \\
+Taux de correction SAST & \textcolor{green}{\textbf{100\%}} \\
 Fichiers corrigés (good/) & 7 fichiers Python \\
 Lignes de code analysées & 495 (bad/), 567 (good/) \\
 Dépendances Python scannées & 32 packages \\
 CVE détectées (dépendances) & 0 \\
 Durée du pipeline & ~41 secondes \\
-Rapports générés & 13 fichiers par scan \\
-Étapes du pipeline & 14 stages (séparées bad/good) \\
+Rapports générés & 19 fichiers par scan \\
+Étapes du pipeline & 14+ stages (SAST, SCA, DAST séparées bad/good) \\
 Version Bandit utilisée & 1.8.6 \\
-Version Trivy utilisée & 0.48.0 \\ \bottomrule
+Version Trivy utilisée & 0.48.0 \\
+Version OWASP ZAP utilisée & zaproxy/zap-stable (latest) \\ \bottomrule
 \end{tabular}
 \caption{Résultats finaux du projet avec corrections}
 \label{tab:final_results}
@@ -741,11 +1033,12 @@ Les résultats montrent l'importance d'une approche multi-couches de la sécurit
 
 \textbf{Bénéfices principaux :}
 \begin{itemize}[leftmargin=*]
-    \item Détection précoce des vulnérabilités dans le cycle de développement
-    \item Correction complète de toutes les vulnérabilités dans la version good/ (taux de réussite : 100\%)
+    \item Détection précoce des vulnérabilités dans le cycle de développement (SAST + SCA + DAST)
+    \item Correction complète de toutes les vulnérabilités SAST dans la version good/ (taux de réussite : 100\%)
+    \item Correction de 3 vulnérabilités DAST critiques (Anti-CSRF, Anti-clickjacking, MIME sniffing)
     \item Comparaison claire entre code vulnérable (bad/) et code sécurisé (good/) grâce aux rapports séparés
     \item Pipeline automatisé permettant la vérification continue après chaque modification
-    \item Documentation exhaustive des vulnérabilités et corrections (11 vulnérabilités corrigées dans 7 fichiers)
+    \item Documentation exhaustive des vulnérabilités et corrections (11 vulnérabilités SAST + 3 DAST corrigées)
     \item Démonstration pédagogique de l'importance des bonnes pratiques de sécurité
     \item Rapports disponibles publiquement sur GitHub pour référence et apprentissage
 \end{itemize}
@@ -753,10 +1046,11 @@ Les résultats montrent l'importance d'une approche multi-couches de la sécurit
 \subsection{Recommandations Futures}
 
 \begin{enumerate}[leftmargin=*]
-    \item Pre-commit hooks Git
-    \item Tests DAST (Dynamic Application Security Testing)
-    \item Alertes automatiques pour nouvelles CVE
-    \item Formation sécurité de l'équipe
+    \item Intégration de pre-commit hooks Git pour validation avant commit
+    \item Tests de pénétration manuels approfondis (au-delà du DAST automatisé)
+    \item Alertes automatiques pour nouvelles CVE dans les dépendances
+    \item Formation continue en sécurité pour l'équipe de développement
+    \item Implémentation d'un WAF (Web Application Firewall) en production
 \end{enumerate}
 
 \newpage
@@ -910,6 +1204,22 @@ Le pipeline génère deux ensembles complets de rapports :
     \item \textbf{bandit-good.html} : Analyse HTML de la version sécurisée (0 vulnérabilité après corrections)
 \end{itemize}
 
+\subsubsection{Rapports DAST (OWASP ZAP)}
+
+\textbf{Version bad/ (vulnérable) :}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{zap-baseline-report-bad.html} : Rapport HTML du scan dynamique (16 avertissements)
+    \item \textbf{zap-baseline-report-bad.xml} : Rapport XML du scan dynamique
+    \item \textbf{zap-baseline-report-bad.json} : Rapport JSON du scan dynamique
+\end{itemize}
+
+\textbf{Version good/ (sécurisée) :}
+\begin{itemize}[leftmargin=*]
+    \item \textbf{zap-baseline-report-good.html} : Rapport HTML du scan dynamique (~10 avertissements)
+    \item \textbf{zap-baseline-report-good.xml} : Rapport XML du scan dynamique
+    \item \textbf{zap-baseline-report-good.json} : Rapport JSON du scan dynamique
+\end{itemize}
+
 \subsubsection{Rapports SCA (Trivy)}
 
 \textbf{Version bad/ (vulnérable) :}
@@ -939,17 +1249,29 @@ Le pipeline génère deux ensembles complets de rapports :
 \textbf{Tous les rapports sont disponibles publiquement sur GitHub :}
 
 \begin{itemize}[leftmargin=*]
-    \item \textbf{Rapports avant corrections :}
+    \item \textbf{Rapports SAST avant corrections :}
     
-    \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/before-vul-correction}
+    \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/sast/before-vul-correction}
     
     Ces rapports montrent l'état initial avec 11 vulnérabilités dans good/
     
-    \item \textbf{Rapports après corrections :}
+    \item \textbf{Rapports SAST après corrections :}
     
-    \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/after-vul-correction}
+    \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/sast/after-vul-correction}
     
-    Ces rapports confirment l'élimination complète des vulnérabilités (0 détecté)
+    Ces rapports confirment l'élimination complète des vulnérabilités SAST (0 détecté)
+    
+    \item \textbf{Rapports DAST avant corrections :}
+    
+    \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/dast/before-val-correction}
+    
+    Ces rapports montrent 13 avertissements DAST dans la version good/
+    
+    \item \textbf{Rapports DAST après corrections :}
+    
+    \url{https://github.com/xmawe/vulpy-sast-sca-analysis/tree/main/reports/dast/after-val-correction}
+    
+    Ces rapports confirment la correction de 3 vulnérabilités (~10 avertissements restants)
     
     \item \textbf{Code source et Jenkinsfile :}
     
@@ -962,14 +1284,24 @@ La structure des répertoires permet une comparaison directe :
 
 \begin{lstlisting}[language=bash]
 reports/
-├── before-vul-correction/
-│   ├── bandit-good.html      (11 vulnerabilites)
-│   ├── trivy-*.json
-│   └── ...
-└── after-vul-correction/
-    ├── bandit-good.html       (0 vulnerabilite)
-    ├── trivy-*.json
-    └── ...
+├── sast/
+│   ├── before-vul-correction/
+│   │   ├── bandit-good.html      (11 vulnerabilites)
+│   │   ├── trivy-*.json
+│   │   └── ...
+│   └── after-vul-correction/
+│       ├── bandit-good.html       (0 vulnerabilite)
+│       ├── trivy-*.json
+│       └── ...
+└── dast/
+    ├── before-val-correction/
+    │   ├── zap-baseline-report-good.html   (13 warnings)
+    │   ├── zap-baseline-report-good.xml
+    │   └── zap-baseline-report-good.json
+    └── after-val-correction/
+        ├── zap-baseline-report-good.html    (~10 warnings)
+        ├── zap-baseline-report-good.xml
+        └── zap-baseline-report-good.json
 \end{lstlisting}
 
 \end{document}

@@ -28,6 +28,14 @@ L'application Vulpy existe en deux versions :
   - Analyse de la chaîne d'approvisionnement (supply chain)
   - Scan des images de conteneurs
 
+### DAST (Dynamic Application Security Testing)
+- **OWASP ZAP** : Test de sécurité dynamique en temps réel
+  - Scan baseline automatique des applications en cours d'exécution
+  - Détection de vulnérabilités web (XSS, CSRF, Clickjacking, etc.)
+  - Tests de sécurité des en-têtes HTTP
+  - Analyse des configurations de sécurité (CSP, cookies, etc.)
+  - Génération de rapports HTML, XML et JSON
+
 ### CI/CD
 - **Jenkins** : Automatisation de l'analyse de sécurité via pipeline
 
@@ -130,7 +138,115 @@ Le pipeline exécute les étapes suivantes :
    - Génération du rapport ZAP pour la version **good**
    - Comparaison des résultats DAST entre les deux versions
 
-## 📊 Rapports Générés
+## � Analyse DAST avec OWASP ZAP
+
+### Description
+
+L'analyse DAST (Dynamic Application Security Testing) est réalisée avec **OWASP ZAP** (Zed Attack Proxy), un outil de test de sécurité open-source qui analyse les applications web en cours d'exécution. Contrairement au SAST qui analyse le code statique, le DAST teste l'application comme le ferait un attaquant réel.
+
+### Configuration DAST
+
+Le pipeline Jenkins exécute automatiquement les scans DAST sur les deux versions de l'application :
+
+1. **Démarrage des applications** : Les conteneurs Docker sont lancés sur le réseau `vulpy-sast-sca-analysis_default`
+   - Version **bad** : accessible sur `http://vulpy-bad-app:5000` (port 5001 externe)
+   - Version **good** : accessible sur `http://vulpy-good-app:5000` (port 5002 externe)
+
+2. **Scan ZAP Baseline** : Exécution du scan avec les paramètres suivants :
+   - Scanner passif : détection automatique des vulnérabilités web
+   - Génération de rapports multiples formats : HTML, XML, JSON
+   - Option `-I` : ignore les avertissements pour ne pas bloquer le pipeline
+
+### Vulnérabilités Détectées
+
+#### Version Bad (Vulnérable) - 16 avertissements
+Les principales vulnérabilités détectées par ZAP dans la version vulnérable incluent :
+
+- **Absence of Anti-CSRF Tokens [10202]** : Absence de protection contre les attaques CSRF
+- **Missing Anti-clickjacking Header [10020]** : Pas de protection contre le clickjacking
+- **X-Content-Type-Options Header Missing [10021]** : En-tête de sécurité manquant
+- **Content Security Policy (CSP) Header Not Set [10038]** : CSP non configurée
+- **Cookie without SameSite Attribute [10054]** : Cookies non sécurisés
+- **Server Leaks Version Information [10036]** : Fuite d'informations serveur
+- **Permissions Policy Header Not Set [10063]** : Politique de permissions manquante
+- **Sub Resource Integrity Attribute Missing [90003]** : SRI non implémenté
+- **Insufficient Site Isolation Against Spectre [90004]** : Isolation insuffisante
+
+#### Version Good (Après Corrections) - 13 avertissements → 10 avertissements
+
+### Corrections Appliquées
+
+Deux vulnérabilités critiques ont été corrigées dans la version **good** :
+
+#### 1. Protection Anti-CSRF (Cross-Site Request Forgery)
+
+**Problème** : Les formulaires n'avaient aucune protection contre les attaques CSRF, permettant à un attaquant de forcer un utilisateur authentifié à exécuter des actions non désirées.
+
+**Solution implémentée** :
+- Installation de **Flask-WTF** pour la gestion des tokens CSRF
+- Activation globale de la protection CSRF avec `CSRFProtect(app)`
+- Ajout de tokens CSRF dans tous les formulaires HTML :
+  ```html
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+  ```
+- Formulaires protégés : login, création d'utilisateur, changement de mot de passe, activation MFA
+
+**Fichiers modifiés** :
+- `vulpy/requirements.txt` : ajout de Flask-WTF
+- `vulpy/good/vulpy.py` : configuration de CSRFProtect
+- `vulpy/good/templates/*.html` : ajout des tokens dans les formulaires
+
+#### 2. Protection Anti-Clickjacking
+
+**Problème** : Absence de l'en-tête `X-Frame-Options`, permettant à des sites malveillants d'embarquer l'application dans une iframe et de piéger les utilisateurs.
+
+**Solution implémentée** :
+- Ajout de l'en-tête `X-Frame-Options: SAMEORIGIN` dans toutes les réponses HTTP
+- Bonus : Ajout de `X-Content-Type-Options: nosniff` pour prévenir le MIME sniffing
+
+**Code ajouté** dans `vulpy/good/vulpy.py` :
+```python
+@app.after_request
+def add_security_headers(response):
+    # CSP header
+    if csp:
+        response.headers['Content-Security-Policy'] = csp
+    
+    # Anti-clickjacking protection
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+    
+    # Prevent MIME type sniffing
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    
+    return response
+```
+
+### Résultats Avant/Après
+
+| Vulnérabilité | Bad (Vulnérable) | Good (Avant) | Good (Après Correction) |
+|--------------|------------------|--------------|------------------------|
+| **Absence of Anti-CSRF Tokens** | ⚠️ Présent (4 occurrences) | ⚠️ Présent (4 occurrences) | ✅ **CORRIGÉ** |
+| **Missing Anti-clickjacking Header** | ⚠️ Présent (8 occurrences) | ⚠️ Présent (8 occurrences) | ✅ **CORRIGÉ** |
+| **X-Content-Type-Options Missing** | ⚠️ Présent (12 occurrences) | ⚠️ Présent (12 occurrences) | ✅ **CORRIGÉ** |
+| Total Warnings | 16 | 13 | **~10** |
+
+### Importance du DAST
+
+Le DAST complète parfaitement les analyses SAST et SCA car :
+
+- **SAST** : analyse le code source statique mais ne détecte pas les problèmes de configuration runtime
+- **SCA** : analyse les dépendances mais ne teste pas le comportement de l'application
+- **DAST** : teste l'application réelle en exécution et détecte les vulnérabilités de configuration (headers HTTP, cookies, CSP, etc.)
+
+### Bonnes Pratiques DAST
+
+1. **Exécuter le DAST après le déploiement** : tester l'application dans son environnement réel
+2. **Automatiser dans le pipeline CI/CD** : intégration continue de la sécurité
+3. **Tester les deux versions** : comparaison vulnérable vs sécurisée pour validation
+4. **Formats multiples** : HTML pour visualisation, JSON pour automatisation
+5. **Ne pas bloquer sur warnings** : utiliser `-I` pour permettre la complétion du pipeline
+
+## �📊 Rapports Générés
 
 Tous les rapports sont archivés dans le répertoire `reports/` et accessibles via Jenkins.
 
@@ -227,11 +343,19 @@ Les vulnérabilités sont classées selon leur gravité :
 2. D'où proviennent principalement les vulnérabilités (code applicatif ou image de base) ?
 3. Proposez des mesures pour réduire la surface d'attaque des conteneurs
 
-### Partie 4 : Synthèse
+### Partie 4 : Analyse DAST
 
-1. Quelle est la différence principale entre l'analyse SAST et SCA ?
-2. Pourquoi est-il important d'utiliser les deux types d'analyse ?
+1. Combien d'avertissements (WARN) sont détectés par ZAP dans la version **bad** ? Et dans la version **good** ?
+2. Quelles vulnérabilités critiques ont été corrigées dans la version **good** ?
+3. Expliquez l'importance de la protection Anti-CSRF et Anti-clickjacking
+4. Comparez les résultats DAST entre les versions **bad** et **good**. Quelles améliorations observez-vous ?
+
+### Partie 5 : Synthèse
+
+1. Quelle est la différence principale entre l'analyse SAST, SCA et DAST ?
+2. Pourquoi est-il important d'utiliser les trois types d'analyse ?
 3. Quelles recommandations feriez-vous pour améliorer la sécurité de l'application ?
+4. Comment le DAST complète-t-il les analyses SAST et SCA ?
 
 ## 🔧 Commandes Utiles
 
